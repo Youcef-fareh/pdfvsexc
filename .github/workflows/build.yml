@@ -1,0 +1,247 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GitHub Actions — Build Facture Converter for Windows
+#
+# Triggered on: push to main/master, pull requests, or manual dispatch.
+#
+# What this workflow does:
+#   1. Checks out the code.
+#   2. Sets up Python 3.11.
+#   3. Restores pip dependency cache.
+#   4. Installs Python dependencies (requirements.txt).
+#   5. Downloads & extracts Tesseract OCR (portable, only fra/ara/eng tessdata).
+#   6. Downloads & extracts Poppler for Windows.
+#   7. Downloads & configures UPX for binary compression.
+#   8. Runs all dependency-free unit tests.
+#   9. Builds the app with PyInstaller (onedir + UPX).
+#  10. Zips the output and uploads it as a GitHub Actions artifact.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [main, master]
+    tags:     ['v*.*.*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. Python setup ───────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+
+      # ── 3. Pip cache ──────────────────────────────────────────────────────────
+      - name: Restore pip cache
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-${{ runner.os }}-
+
+      # ── 4. Install Python dependencies ────────────────────────────────────────
+      - name: Install Python dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip wheel
+          pip install -r requirements.txt
+
+      # ── 5. Download Tesseract ─────────────────────────────────────────────────
+      # We use the UB-Mannheim Tesseract Windows installer (silent mode) and then
+      # copy only the needed files into vendor/tesseract so PyInstaller can bundle them.
+      - name: Download and extract Tesseract OCR
+        shell: pwsh
+        run: |
+          $tessVersion = "5.3.3.20231005"
+          $tessUrl     = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
+          $tssInstaller = "$env:RUNNER_TEMP\tesseract_setup.exe"
+          $tessInstallDir = "C:\Program Files\Tesseract-OCR"
+
+          Write-Host "Downloading Tesseract $tessVersion ..."
+          Invoke-WebRequest -Uri $tessUrl -OutFile $tssInstaller -UseBasicParsing
+
+          Write-Host "Installing Tesseract silently ..."
+          Start-Process -FilePath $tssInstaller -ArgumentList "/S" -Wait -NoNewWindow
+
+          Write-Host "Copying Tesseract to vendor/ ..."
+          $vendorTess = "vendor\tesseract"
+          New-Item -ItemType Directory -Force -Path $vendorTess | Out-Null
+          Copy-Item "$tessInstallDir\tesseract.exe"      "$vendorTess\"
+          Copy-Item "$tessInstallDir\*.dll"              "$vendorTess\" -ErrorAction SilentlyContinue
+
+          # Tessdata — only copy the three needed language packs
+          $tessdata = "$vendorTess\tessdata"
+          New-Item -ItemType Directory -Force -Path $tessdata | Out-Null
+          Copy-Item "$tessInstallDir\tessdata\eng.traineddata" "$tessdata\" -ErrorAction SilentlyContinue
+          Copy-Item "$tessInstallDir\tessdata\osd.traineddata" "$tessdata\" -ErrorAction SilentlyContinue
+
+          # Download fra and ara tessdata from the official tesseract-ocr repo
+          Write-Host "Downloading fra.traineddata ..."
+          Invoke-WebRequest `
+            -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/fra.traineddata" `
+            -OutFile "$tessdata\fra.traineddata" `
+            -UseBasicParsing
+
+          Write-Host "Downloading ara.traineddata ..."
+          Invoke-WebRequest `
+            -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/ara.traineddata" `
+            -OutFile "$tessdata\ara.traineddata" `
+            -UseBasicParsing
+
+          Write-Host "Tesseract vendor size:"
+          (Get-ChildItem $vendorTess -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+
+      # ── 6. Download Poppler for Windows ───────────────────────────────────────
+      - name: Download and extract Poppler
+        shell: pwsh
+        run: |
+          $popplerUrl = "https://github.com/oschwartz10612/poppler-windows/releases/download/v24.02.0-0/Release-24.02.0-0.zip"
+          $popplerZip = "$env:RUNNER_TEMP\poppler.zip"
+          $popplerTmp = "$env:RUNNER_TEMP\poppler_extract"
+
+          Write-Host "Downloading Poppler ..."
+          Invoke-WebRequest -Uri $popplerUrl -OutFile $popplerZip -UseBasicParsing
+
+          Write-Host "Extracting Poppler ..."
+          Expand-Archive -Path $popplerZip -DestinationPath $popplerTmp -Force
+
+          # Find the versioned subfolder (e.g. poppler-24.02.0/)
+          $popplerSubdir = Get-ChildItem $popplerTmp -Directory | Select-Object -First 1
+
+          Write-Host "Copying Poppler to vendor/ ..."
+          $vendorPoppler = "vendor\poppler"
+          New-Item -ItemType Directory -Force -Path $vendorPoppler | Out-Null
+          Copy-Item "$($popplerSubdir.FullName)\*" $vendorPoppler -Recurse -Force
+
+          Write-Host "Poppler vendor size:"
+          (Get-ChildItem $vendorPoppler -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
+
+      # ── 7. Download UPX ───────────────────────────────────────────────────────
+      - name: Download and configure UPX
+        shell: pwsh
+        run: |
+          $upxUrl = "https://github.com/upx/upx/releases/download/v4.2.2/upx-4.2.2-win64.zip"
+          $upxZip = "$env:RUNNER_TEMP\upx.zip"
+          $upxTmp = "$env:RUNNER_TEMP\upx_extract"
+
+          Write-Host "Downloading UPX ..."
+          Invoke-WebRequest -Uri $upxUrl -OutFile $upxZip -UseBasicParsing
+          Expand-Archive -Path $upxZip -DestinationPath $upxTmp -Force
+
+          $upxDir = Get-ChildItem $upxTmp -Directory | Select-Object -First 1
+          $upxExe = "$($upxDir.FullName)\upx.exe"
+
+          # Add UPX to PATH for this job
+          echo "$($upxDir.FullName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "UPX location: $upxExe"
+          & $upxExe --version
+
+      # ── 8. Create placeholder assets (for CI only) ────────────────────────────
+      # The real icon is generated during development; in CI we create a minimal
+      # placeholder so PyInstaller does not error on missing file.
+      - name: Create CI asset placeholders
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "assets\icons" | Out-Null
+          # Create a 1x1 transparent PNG as placeholder icon
+          $bytes = [Convert]::FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          )
+          [IO.File]::WriteAllBytes("assets\icons\app_icon.png", $bytes)
+          [IO.File]::WriteAllBytes("assets\icons\app_icon.ico", $bytes)
+          # Empty QSS placeholder
+          New-Item -Force -Path "assets\style.qss" -Value "" | Out-Null
+
+      # ── 9. Run dependency-free unit tests ──────────────────────────────────────
+      - name: Run unit tests (dependency-free only)
+        shell: pwsh
+        run: |
+          # Only run tests that don't need Tesseract/OpenCV/sample images.
+          # The skipped tests are documented in skipped_tests.md.
+          python -m pytest tests/test_table_detector.py::TestNormalizer -v --tb=short
+        continue-on-error: false
+
+      # ── 10. Build with PyInstaller ─────────────────────────────────────────────
+      - name: Build with PyInstaller
+        shell: pwsh
+        run: |
+          # Verify vendor dirs exist before build
+          if (-not (Test-Path "vendor\tesseract\tesseract.exe")) {
+            Write-Error "vendor/tesseract/tesseract.exe missing — Tesseract step failed"
+            exit 1
+          }
+          if (-not (Test-Path "vendor\poppler\bin")) {
+            Write-Error "vendor/poppler/bin missing — Poppler step failed"
+            exit 1
+          }
+
+          Write-Host "Starting PyInstaller build ..."
+          pyinstaller build.spec --clean --noconfirm
+
+          Write-Host "Build output:"
+          Get-ChildItem dist\FactureConverter | Select-Object Name, Length | Format-Table
+
+      # ── 11. Measure output size ───────────────────────────────────────────────
+      - name: Report bundle size
+        shell: pwsh
+        run: |
+          $size = (Get-ChildItem dist\FactureConverter -Recurse |
+                   Measure-Object -Property Length -Sum).Sum
+          $sizeMB = [math]::Round($size / 1MB, 1)
+          Write-Host "Total bundle size: ${sizeMB} MB"
+          echo "BUNDLE_SIZE_MB=$sizeMB" >> $env:GITHUB_ENV
+
+      # ── 12. Create ZIP archive ────────────────────────────────────────────────
+      - name: Create ZIP archive
+        shell: pwsh
+        run: |
+          $version = git describe --tags --abbrev=0 2>$null
+          if (-not $version) { $version = "dev-${{ github.run_number }}" }
+          $zipName = "FactureConverter-$version-win64.zip"
+          Compress-Archive -Path "dist\FactureConverter\*" -DestinationPath $zipName
+          Write-Host "Created: $zipName"
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      # ── 13. Upload artifact ───────────────────────────────────────────────────
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FactureConverter-win64
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 30
+
+      # ── 14. Create GitHub Release (on tag push only) ──────────────────────────
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          body: |
+            ## Facture Converter ${{ github.ref_name }}
+
+            ### Installation
+            1. Download and extract the ZIP file.
+            2. Run `FactureConverter.exe` — no installation required.
+            3. All libraries (Tesseract OCR, Poppler) are included.
+
+            ### Requirements
+            - Windows 10/11 x64
+            - 8 GB RAM minimum
+            - No internet connection required
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

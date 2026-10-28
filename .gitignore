@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+
+# PyInstaller
+*.spec.bak
+dist/
+build/
+*.exe
+*.zip
+
+# Vendor binaries — downloaded by CI, never committed
+vendor/
+
+# Tests fixtures (may contain real invoice images — never commit)
+tests/fixtures/
+
+# App user data
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

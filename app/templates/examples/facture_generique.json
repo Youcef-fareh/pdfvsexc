@@ -1,0 +1,51 @@
+{
+  "name": "Facture Générique Algérie",
+  "description": "Template générique pour les factures algériennes standard (A4, portrait).",
+  "created_at": "2024-01-01T00:00:00",
+  "updated_at": "2024-01-01T00:00:00",
+  "thumbnail_path": "",
+  "fields": [
+    {
+      "name": "N° Facture",
+      "region": [400, 60, 300, 40],
+      "field_type": "text",
+      "required": true
+    },
+    {
+      "name": "Date",
+      "region": [400, 100, 200, 40],
+      "field_type": "date",
+      "required": true
+    },
+    {
+      "name": "Client",
+      "region": [50, 130, 350, 60],
+      "field_type": "text",
+      "required": true
+    },
+    {
+      "name": "Tableau Articles",
+      "region": [30, 220, 740, 500],
+      "field_type": "table",
+      "required": true
+    },
+    {
+      "name": "Total HT",
+      "region": [550, 740, 200, 30],
+      "field_type": "number",
+      "required": false
+    },
+    {
+      "name": "TVA",
+      "region": [550, 775, 200, 30],
+      "field_type": "number",
+      "required": false
+    },
+    {
+      "name": "Total TTC",
+      "region": [550, 810, 200, 30],
+      "field_type": "number",
+      "required": false
+    }
+  ]
+}
