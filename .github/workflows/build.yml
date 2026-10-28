@@ -183,7 +183,7 @@ jobs:
         run: |
           # Only run tests that don't need Tesseract/OpenCV/sample images.
           # The skipped tests are documented in skipped_tests.md.
-          python -m pytest tests/test_table_detector.py::TestNormalizer -v --tb=short
+          python -m unittest discover -s tests -v
         continue-on-error: false
 
       # ── 10. Build with PyInstaller ─────────────────────────────────────────────

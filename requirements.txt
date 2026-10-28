@@ -37,3 +37,6 @@ python-bidi>=0.4.2
 
 # Packaging (dev/build only)
 pyinstaller>=6.5.0
+
+# Testing (optional / dev)
+pytest>=7.4.0
