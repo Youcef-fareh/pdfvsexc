@@ -56,7 +56,7 @@ because they only test pure-Python logic with no binary dependencies:
 
 Required for: all tests in `test_ocr.py`
 
-**Download:** [UB-Mannheim Tesseract Releases](https://github.com/UB-Mannheim/tesseract/releases)
+**Download:** [UB-Mannheim Tesseract Builds](https://digi.bib.uni-mannheim.de/tesseract/) or [Tesseract GitHub Releases](https://github.com/tesseract-ocr/tesseract/releases)
 - File: `tesseract-ocr-w64-setup-5.x.x.exe` (Windows 64-bit)
 - After installing, copy to: `vendor/tesseract/tesseract.exe`
 

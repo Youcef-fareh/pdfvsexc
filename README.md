@@ -105,8 +105,8 @@ To build locally, you must first download the vendor binaries:
 
 ### Step 1 — Download Tesseract
 
-1. Download from [UB-Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract/releases):
-   - File: `tesseract-ocr-w64-setup-5.x.x.exe`
+1. Download from [UB-Mannheim Tesseract](https://digi.bib.uni-mannheim.de/tesseract/):
+   - File: `tesseract-ocr-w64-setup-5.3.3.20231005.exe` (or latest)
 2. Install silently: `tesseract-ocr-w64-setup-5.x.x.exe /S`
 3. Copy files:
 
