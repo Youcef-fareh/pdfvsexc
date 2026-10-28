@@ -130,13 +130,27 @@ jobs:
           Write-Host "Extracting Poppler ..."
           Expand-Archive -Path $popplerZip -DestinationPath $popplerTmp -Force
 
-          # Find the versioned subfolder (e.g. poppler-24.02.0/)
-          $popplerSubdir = Get-ChildItem $popplerTmp -Directory | Select-Object -First 1
+          # In oschwartz10612 releases, the executables & dlls reside in Library/bin
+          $binFolder = Get-ChildItem -Path $popplerTmp -Recurse -Directory -Filter "bin" | Select-Object -First 1
+          if (-not $binFolder) {
+              Write-Error "Could not find bin directory in Poppler archive"
+              exit 1
+          }
 
-          Write-Host "Copying Poppler to vendor/ ..."
+          Write-Host "Found Poppler bin at: $($binFolder.FullName)"
           $vendorPoppler = "vendor\poppler"
-          New-Item -ItemType Directory -Force -Path $vendorPoppler | Out-Null
-          Copy-Item "$($popplerSubdir.FullName)\*" $vendorPoppler -Recurse -Force
+          $vendorPopplerBin = "$vendorPoppler\bin"
+          New-Item -ItemType Directory -Force -Path $vendorPopplerBin | Out-Null
+          Copy-Item "$($binFolder.FullName)\*" $vendorPopplerBin -Recurse -Force
+
+          # Also copy share/ if present for fonts/mappings
+          $shareFolder = Get-ChildItem -Path $popplerTmp -Recurse -Directory -Filter "share" | Select-Object -First 1
+          if ($shareFolder) {
+              Copy-Item $shareFolder.FullName "$vendorPoppler\" -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          Write-Host "Poppler bin contents:"
+          Get-ChildItem $vendorPopplerBin | Select-Object -First 10 Name
 
           Write-Host "Poppler vendor size:"
           (Get-ChildItem $vendorPoppler -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB

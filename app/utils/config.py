@@ -39,8 +39,9 @@ LOGS_DIR: str = os.path.join(APP_DATA_DIR, "logs")
 
 # Vendor paths (bundled via PyInstaller datas)
 TESSERACT_EXE: str = get_resource_path(os.path.join("vendor", "tesseract", "tesseract.exe"))
-TESSDATA_DIR: str = get_resource_path(os.path.join("vendor", "tesseract", "tessdata"))
-POPPLER_BIN: str = get_resource_path(os.path.join("vendor", "poppler", "bin"))
+_poppler_bin = get_resource_path(os.path.join("vendor", "poppler", "bin"))
+_poppler_lib_bin = get_resource_path(os.path.join("vendor", "poppler", "Library", "bin"))
+POPPLER_BIN: str = _poppler_lib_bin if (not os.path.isdir(_poppler_bin) and os.path.isdir(_poppler_lib_bin)) else _poppler_bin
 
 # ── OCR settings ──────────────────────────────────────────────────────────────
 
